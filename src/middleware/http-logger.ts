@@ -1,0 +1,1 @@
+export const httpLoggerMiddleware = (req, res, next) => next(); 

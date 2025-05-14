@@ -1,0 +1,1 @@
+export const responseTimeMiddleware = (req, res, next) => next(); 

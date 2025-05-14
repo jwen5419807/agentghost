@@ -1,0 +1,51 @@
+{
+	"name": "agentghost",
+	"version": "1.0.0",
+	"description": "A AI agent server for web scraping and automation",
+	"main": "dist/server.js",
+	"scripts": {
+		"build": "tsc",
+		"start": "ts-node src/server.ts",
+		"dev": "ts-node src/server.ts",
+		"lint": "tslint -p tsconfig.json",
+		"clean": "rimraf dist",
+		"prebuild": "npm run clean",
+		"postbuild": "copyfiles -u 1 src/**/*.html src/**/*.css src/**/*.json src/views/**/* dist/",
+		"start:prod": "NODE_ENV=production node src/server.js",
+		"example": "node src/example.js",
+		"test": "node src/test.js",
+		"stop": "pm2 stop ecosystem.config.js",
+		"pm2:start": "NODE_ENV=production pm2 start ecosystem.config.js --env production",
+		"pm2:stop": "pm2 stop ecosystem.config.js",
+		"pm2:restart": "pm2 restart ecosystem.config.js",
+		"pm2:reload": "pm2 reload ecosystem.config.js",
+		"pm2:delete": "pm2 delete ecosystem.config.js",
+		"pm2:logs": "pm2 logs",
+		"pm2:status": "pm2 status"
+	},
+	"dependencies": {
+		"body-parser": "^1.20.2",
+		"dotenv": "^16.4.7",
+		"dotenv-parse-variables": "^2.0.0",
+		"express": "^4.18.2",
+		"puppeteer-real-browser": "^1.4.2",
+		"winston": "^3.17.0",
+		"winston-daily-rotate-file": "^5.0.0"
+	},
+	"packageManager": "pnpm@10.5.2+sha512.da9dc28cd3ff40d0592188235ab25d3202add8a207afbedc682220e4a0029ffbff4562102b9e6e46b4e3f9e8bd53e6d05de48544b0c57d4b0179e22c76d1199b",
+	"devDependencies": {
+		"@types/body-parser": "^1.19.5",
+		"@types/dotenv": "^8.2.3",
+		"@types/express": "^5.0.1",
+		"@types/node": "^22.15.18",
+		"@types/puppeteer": "^7.0.4",
+		"axios": "^1.8.3",
+		"copyfiles": "^2.4.1",
+		"pm2": "^5.4.3",
+		"rimraf": "^6.0.1",
+		"typescript": "^5.8.2"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "MIT"
+}

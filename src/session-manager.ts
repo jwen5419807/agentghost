@@ -1,0 +1,1 @@
+class PuppeteerSessionManager { constructor(config) { } async initialize(urls) { } async exit() { } isBrowserInitialized() { return true; } } export default PuppeteerSessionManager; 
