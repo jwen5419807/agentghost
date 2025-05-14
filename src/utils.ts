@@ -1,0 +1,1 @@
+export const printBanner = () => console.log('AgentGhost Banner'); 
