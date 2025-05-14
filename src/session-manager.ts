@@ -60,16 +60,16 @@ class PuppeteerSessionManager {
 
             // Optional: Navigate to default URLs
             for (const url of urls) {
-                const page = await this.getPage(); // Get a page from the connected browser
+                // Get a page and its release function
+                const { page, release } = await this.getPage();
                 try {
-                    await page.page.goto(url, { waitUntil: 'domcontentloaded' });
+                    await page.goto(url, { waitUntil: 'domcontentloaded' });
                     console.log(`Navigated to default URL: ${url}`);
                 } catch (error) {
                     console.error(`Failed to navigate to default URL ${url}:`, error);
-                    // Close the problematic page to not affect other sessions
-                    if (page.page && page.page.close) { // Check if page is valid and has close method
-                        await page.page.close();
-                    }
+                } finally {
+                    // Release the page back to the pool after use
+                    await release();
                 }
             }
 
@@ -127,11 +127,7 @@ class PuppeteerSessionManager {
             page = await this.browser.newPage();
             console.log('Created a new page.');
         } else {
-            // If max pages reached, wait for a page to become available (basic implementation)
-            // A more advanced implementation would use a queue/event system
-            console.warn('Max pages reached. Waiting for a page to be released...');
-            // This basic implementation just throws an error or waits indefinitely,
-            // in a real scenario, you'd want a timeout and a proper queuing system.
+            // If max pages reached, throw an error or implement a waiting mechanism
             throw new Error('Max pages reached. Please try again later.');
         }
 
@@ -153,18 +149,16 @@ class PuppeteerSessionManager {
                     });
                     // Navigate to a blank page to ensure no state leaks
                     await releasedPage.goto('about:blank');
+                    // Return the page to the pool if cleanup was successful
+                    this.pagePool.push(releasedPage);
+                    console.log(`Page ${pageId} released to pool. Pool size: ${this.pagePool.length}`);
                 } catch (error) {
                     console.error(`Error cleaning up page ${pageId}:`, error);
                     // If cleanup fails, close the page instead of returning it to the pool
                     if (releasedPage && releasedPage.close) {
                         await releasedPage.close();
                     }
-                    return;
                 }
-
-                // Return the page to the pool if not closed
-                this.pagePool.push(releasedPage);
-                console.log(`Page ${pageId} released to pool. Pool size: ${this.pagePool.length}`);
             } else {
                 console.warn(`Attempted to release unknown page ${pageId}.`);
             }
