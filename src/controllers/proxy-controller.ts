@@ -24,6 +24,9 @@ export class ProxyController {
         } catch (error: any) {
             console.error('Error getting page title:', error);
             res.status(500).json({ status: 'error', message: 'Failed to get page title', error: error.message });
+        } finally {
+            // Consider closing the page here if not using a pool
+            // if (page && page.close) { await page.close(); }
         }
     }
 
@@ -44,6 +47,9 @@ export class ProxyController {
         } catch (error: any) {
             console.error('Error getting page content:', error);
             res.status(500).json({ status: 'error', message: 'Failed to get page content', error: error.message });
+        } finally {
+            // Consider closing the page here if not using a pool
+            // if (page && page.close) { await page.close(); }
         }
     }
 
@@ -146,6 +152,53 @@ export class ProxyController {
             if (page && page.close) {
                 await page.close(); // Ensure the page is closed after use
             }
+        }
+    }
+
+    async submitTask(req: Request, res: Response): Promise<void> {
+        const { type, url, selector, action, text } = req.body;
+
+        if (!type || !url) {
+            res.status(400).json({ status: 'error', message: 'Task type and URL are required' });
+            return;
+        }
+
+        // Create a simplified request object to pass to specific handlers if needed
+        // For now, we'll pass the original req and res, assuming handlers can pick what they need
+        // This might need refactoring if task submission logic becomes more complex
+        const taskReq = { body: req.body };
+        const taskRes = res; // Pass the original response object
+
+        switch (type) {
+            case 'getTitle':
+                await this.getPageTitle(taskReq as Request, taskRes);
+                break;
+            case 'getContent':
+                await this.getPageContent(taskReq as Request, taskRes);
+                break;
+            case 'getElement':
+                // Ensure selector is provided for this task type
+                if (!selector) {
+                    res.status(400).json({ status: 'error', message: 'Selector is required for getElement task' });
+                    return;
+                }
+                await this.getPageElement(taskReq as Request, taskRes);
+                break;
+            case 'interact':
+                // Ensure selector and action are provided for this task type
+                if (!selector || !action) {
+                    res.status(400).json({ status: 'error', message: 'Selector and action are required for interact task' });
+                    return;
+                }
+                await this.interactWithPage(taskReq as Request, taskRes);
+                break;
+            case 'screenshot':
+                await this.getPageScreenshot(taskReq as Request, taskRes);
+                break;
+            // Add more task types here as needed
+            default:
+                res.status(400).json({ status: 'error', message: `Unsupported task type: ${type}` });
+                break;
         }
     }
 }

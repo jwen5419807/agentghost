@@ -18,6 +18,8 @@ interface PuppeteerConfig {
 
 class PuppeteerSessionManager {
     browser: any | null = null; // Use any for now based on puppeteer-real-browser usage
+    private pagePool: any[] = []; // Pool of available pages
+    private activePages: Map<string, any> = new Map(); // Map of active pages by ID
 
     constructor(private config: any) { } // Revert to any for simpler config handling
 
@@ -60,13 +62,13 @@ class PuppeteerSessionManager {
             for (const url of urls) {
                 const page = await this.getPage(); // Get a page from the connected browser
                 try {
-                    await page.goto(url, { waitUntil: 'domcontentloaded' });
+                    await page.page.goto(url, { waitUntil: 'domcontentloaded' });
                     console.log(`Navigated to default URL: ${url}`);
                 } catch (error) {
                     console.error(`Failed to navigate to default URL ${url}:`, error);
                     // Close the problematic page to not affect other sessions
-                    if (page && page.close) { // Check if page is valid and has close method
-                        await page.close();
+                    if (page.page && page.page.close) { // Check if page is valid and has close method
+                        await page.page.close();
                     }
                 }
             }
@@ -81,7 +83,23 @@ class PuppeteerSessionManager {
     async exit() {
         if (this.browser) {
             console.log('Closing browser...');
-            // Check if the browser object has a close method before calling it
+            // Close all active pages first
+            for (const page of this.activePages.values()) {
+                if (page && page.close) {
+                    await page.close();
+                }
+            }
+            this.activePages.clear();
+
+            // Close all pages in the pool
+            for (const page of this.pagePool) {
+                if (page && page.close) {
+                    await page.close();
+                }
+            }
+            this.pagePool = [];
+
+            // Close the browser
             if (this.browser.close) {
                 await this.browser.close();
             }
@@ -94,39 +112,105 @@ class PuppeteerSessionManager {
         return this.browser !== null;
     }
 
-    async getPage(): Promise<any> { // Use any for the Page type
+    async getPage(): Promise<{ page: any, release: () => Promise<void> }> {
         if (!this.browser) {
             throw new Error('Browser not initialized.');
         }
-        // Create a new page using the browser instance from connect
-        // TODO: Implement page pooling/management based on maxPages
-        const page = await this.browser.newPage();
-        return page;
+
+        let page;
+        // Check if there's an available page in the pool
+        if (this.pagePool.length > 0) {
+            page = this.pagePool.pop();
+            console.log('Reusing page from pool.');
+        } else if (this.activePages.size < this.config.MAX_PAGES) {
+            // Create a new page if the pool is empty and we haven't reached max pages
+            page = await this.browser.newPage();
+            console.log('Created a new page.');
+        } else {
+            // If max pages reached, wait for a page to become available (basic implementation)
+            // A more advanced implementation would use a queue/event system
+            console.warn('Max pages reached. Waiting for a page to be released...');
+            // This basic implementation just throws an error or waits indefinitely,
+            // in a real scenario, you'd want a timeout and a proper queuing system.
+            throw new Error('Max pages reached. Please try again later.');
+        }
+
+        // Assign a unique ID to the page and add it to active pages
+        const pageId = page.target()._targetId; // Using target ID as a unique identifier
+        this.activePages.set(pageId, page);
+
+        const release = async () => {
+            if (this.activePages.has(pageId)) {
+                const releasedPage = this.activePages.get(pageId);
+                this.activePages.delete(pageId);
+                // Clean up the page before returning it to the pool (optional but recommended)
+                try {
+                    await releasedPage.evaluate(() => {
+                        // Clear cookies, local storage, session storage, etc.
+                        document.cookie.split(';').forEach(function (c) { document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/'); });
+                        localStorage.clear();
+                        sessionStorage.clear();
+                    });
+                    // Navigate to a blank page to ensure no state leaks
+                    await releasedPage.goto('about:blank');
+                } catch (error) {
+                    console.error(`Error cleaning up page ${pageId}:`, error);
+                    // If cleanup fails, close the page instead of returning it to the pool
+                    if (releasedPage && releasedPage.close) {
+                        await releasedPage.close();
+                    }
+                    return;
+                }
+
+                // Return the page to the pool if not closed
+                this.pagePool.push(releasedPage);
+                console.log(`Page ${pageId} released to pool. Pool size: ${this.pagePool.length}`);
+            } else {
+                console.warn(`Attempted to release unknown page ${pageId}.`);
+            }
+        };
+
+        return { page, release };
     }
 
     async getActiveSessions(): Promise<any[]> { // Method to list active pages
         if (!this.browser) {
             return []; // Return empty array if browser is not initialized
         }
-        try {
-            const pages = await this.browser.pages();
-            const sessions = await Promise.all(pages.map(async (page: any) => {
-                try {
-                    const url = await page.url();
-                    // Puppeteer pages don't have a simple ID, use the target ID
-                    const target = page.target();
-                    const id = target._targetId; // Accessing internal property, might need a better way
-                    return { id, url };
-                } catch (error) {
-                    console.error('Error getting session info for a page:', error);
-                    return null; // Return null for pages where info could not be retrieved
+        // Return information about pages in the activePages map
+        return Array.from(this.activePages.entries()).map(([id, page]) => ({
+            id,
+            url: page.url ? page.url() : 'N/A', // Get URL if page object has the method
+        }));
+    }
+
+    async closeSession(sessionId: string): Promise<boolean> {
+        if (!this.browser) {
+            console.warn(`Attempted to close session ${sessionId} but browser is not initialized.`);
+            return false;
+        }
+
+        const pageToClose = this.activePages.get(sessionId);
+
+        if (pageToClose) {
+            console.log(`Closing session ${sessionId}...`);
+            try {
+                // Remove from active pages before closing
+                this.activePages.delete(sessionId);
+                if (pageToClose && pageToClose.close) {
+                    await pageToClose.close();
                 }
-            }));
-            // Filter out any null entries that might have resulted from errors
-            return sessions.filter(session => session !== null);
-        } catch (error: any) {
-            console.error('Error getting active sessions:', error);
-            throw new Error('Failed to retrieve active sessions');
+                console.log(`Session ${sessionId} closed.`);
+                return true;
+            } catch (error) {
+                console.error(`Error closing session ${sessionId}:`, error);
+                // If closing fails, ensure it's removed from active pages
+                this.activePages.delete(sessionId);
+                throw new Error(`Failed to close session ${sessionId}`);
+            }
+        } else {
+            console.warn(`Session ${sessionId} not found in active sessions.`);
+            return false;
         }
     }
 }

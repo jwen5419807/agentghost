@@ -10,5 +10,8 @@ export const createAdminRoutes = (controller: AdminController): Router => {
     // Route to list active sessions
     router.get('/sessions', (req, res) => controller.listSessions(req, res));
 
+    // Route to terminate a specific session by ID
+    router.delete('/sessions/:sessionId', (req, res) => controller.terminateSession(req, res));
+
     return router;
 }; 

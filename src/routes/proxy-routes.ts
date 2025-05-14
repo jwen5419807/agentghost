@@ -21,5 +21,8 @@ export const createProxyRoutes = (controller: ProxyController): Router => {
     // New route to take a screenshot of the page
     router.post('/scrape/screenshot', (req, res) => controller.getPageScreenshot(req, res));
 
+    // New route for submitting tasks
+    router.post('/submit-task', (req, res) => controller.submitTask(req, res));
+
     return router;
 }; 
